@@ -18,26 +18,63 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Database connection (PostgreSQL)
-// On Render, simply add a PostgreSQL database and link it. 
-// It will automatically provide the 'DATABASE_URL' env variable.
+// Database connection
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
-// --- API ROUTES EXAMPLE ---
+// Initialize Database Tables
+const initDb = async () => {
+  try {
+    console.log('Initializing database...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        telegram_id BIGINT UNIQUE NOT NULL,
+        first_name TEXT,
+        username TEXT,
+        tariff VARCHAR(50) DEFAULT 'free',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS mood_entries (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(telegram_id),
+        score INTEGER,
+        emotions TEXT[],
+        note TEXT,
+        date TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    console.log('Database tables ready.');
+  } catch (err) {
+    console.error('Error initializing database. Ensure DATABASE_URL is set correctly.', err);
+  }
+};
+
+// Run DB Init on startup
+initDb();
+
+// --- API ROUTES ---
 
 // 1. Get User Data
 app.get('/api/users/:telegramId', async (req, res) => {
   try {
     const { telegramId } = req.params;
-    // Example query:
-    // const result = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [telegramId]);
-    // res.json(result.rows[0]);
     
-    // Mock response until DB is set up
-    res.json({ status: 'ok', message: `Data for ${telegramId}` });
+    // Check if user exists, if not create
+    let result = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [telegramId]);
+    
+    if (result.rows.length === 0) {
+       // Create new user automatically
+       result = await pool.query(
+         'INSERT INTO users (telegram_id, tariff) VALUES ($1, $2) RETURNING *',
+         [telegramId, 'free']
+       );
+    }
+    
+    res.json({ status: 'ok', data: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database error' });
@@ -48,16 +85,26 @@ app.get('/api/users/:telegramId', async (req, res) => {
 app.post('/api/mood', async (req, res) => {
   try {
     const { userId, score, emotions, note } = req.body;
-    // await pool.query('INSERT INTO mood_entries ...');
+    
+    // Ensure user exists first
+    const userCheck = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+        await pool.query('INSERT INTO users (telegram_id) VALUES ($1)', [userId]);
+    }
+
+    await pool.query(
+      'INSERT INTO mood_entries (user_id, score, emotions, note) VALUES ($1, $2, $3, $4)',
+      [userId, score, emotions, note]
+    );
     res.json({ status: 'saved' });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Failed to save mood' });
   }
 });
 
-// 3. Payment Webhook (Example for Stripe/Yookassa)
+// 3. Payment Webhook (Stub)
 app.post('/api/webhook/payment', async (req, res) => {
-    // Validate signature and update user tariff in DB
     console.log("Payment received", req.body);
     res.sendStatus(200);
 });
