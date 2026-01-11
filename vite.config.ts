@@ -4,15 +4,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    }
   },
   build: {
     outDir: 'dist',
     sourcemap: false
-  },
-  define: {
-    // This allows the code to use process.env.API_KEY as required by the SDK,
-    // while mapping it to the Vite-compatible environment variable at build time.
-    'process.env.API_KEY': 'import.meta.env.VITE_API_KEY'
   }
 });

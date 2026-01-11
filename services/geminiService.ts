@@ -3,9 +3,18 @@ import { Message, Persona, TariffLevel } from '../types';
 import { SYSTEM_INSTRUCTION_BASE, PERSONA_PROMPTS } from '../constants';
 
 const getClient = () => {
-    // According to guidelines, the API key must be obtained from process.env.API_KEY.
-    // Assume it is valid and accessible.
-    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // In a Web Service deployment on Render:
+    // 1. If using Vite to build: We can use import.meta.env.VITE_API_KEY
+    // 2. Ideally, we should move AI calls to the backend (server.js) to hide the key entirely.
+    // For now, to keep the frontend working as is, ensure VITE_API_KEY is set in Render Environment Variables.
+    
+    // Note: Render exposes standard env vars. Vite requires VITE_ prefix for client-side usage.
+    const apiKey = import.meta.env.VITE_API_KEY; 
+    
+    if (!apiKey) {
+        console.error("API Key is missing. Set VITE_API_KEY in Render Environment Variables.");
+    }
+    return new GoogleGenAI({ apiKey: apiKey || '' });
 };
 
 export const generateTherapyResponse = async (
@@ -17,7 +26,6 @@ export const generateTherapyResponse = async (
     try {
         const ai = getClient();
         
-        // Construct system instruction based on persona and tariff limits
         let specificInstruction = PERSONA_PROMPTS[persona];
         
         if (tariff === 'free') {
